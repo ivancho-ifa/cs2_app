@@ -423,7 +423,7 @@ function render() {
         <div class="foot">
           <span class="discount">${it.discount.toFixed(1)}% off</span>
           <span>${it.float !== null && it.float !== undefined ? 'float ' + it.float.toFixed(4) : ''}</span>
-          <span>${it.suggestedPrice > it.bestPrice ? 'vs Steam ' + fmtUsd(it.suggestedPrice) : it.crossListed ? 'spread ' + fmtUsd(it.spread) : ''}</span>
+          <span>${it.suggestedPrice > it.bestPrice ? (it.discountBasis === 'steam' ? 'vs Steam ' : 'vs highest ') + fmtUsd(it.suggestedPrice) : it.crossListed ? 'spread ' + fmtUsd(it.spread) : ''}</span>
         </div>
       </div>
     </div>`;

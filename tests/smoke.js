@@ -72,6 +72,13 @@ async function waitForServer() {
   const usp = data.items.find((i) => i.name === 'USP-S | Kill Confirmed (Field-Tested)');
   assert(usp, 'USP-S should be present');
   assert(Math.abs(usp.discount - 8.3) < 0.1, `USP-S discount should be ~8.3 vs Steam 66.50, got ${usp.discount}`);
+  assert(usp.discountBasis === 'steam', `USP-S discount basis should be steam, got ${usp.discountBasis}`);
+
+  // Without a Steam price the highest listing is the reference: Printstream
+  // at 91.00 on Skinport vs 94.50 on DMarket
+  const ps = data.items.find((i) => i.name === 'Desert Eagle | Printstream (Factory New)');
+  assert(ps && ps.discountBasis === 'listed' && Math.abs(ps.discount - 3.7) < 0.1,
+    `Printstream should be discounted ~3.7 vs its highest listing, got ${ps && ps.discountBasis} ${ps && ps.discount}`);
 
   // Rarity comes from the catalog fixture
   assert(ak.rarity === 'Classified' && ak.rarityColor === '#d32ce6',

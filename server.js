@@ -691,13 +691,14 @@ function mergeSources(sourceItems, volumes, catalog, references) {
     const listings = Object.entries(entry.sources).map(([source, s]) => ({ source, ...s }));
     listings.sort((a, b) => a.price - b.price);
     const best = listings[0];
+    const highestListed = listings[listings.length - 1].price;
 
     const ref = references.get(entry.name) || {};
     // Discount is the saving versus buying on Steam. Steam's reference is a
     // sales average, which a single absurd ask cannot skew the way lowest-ask
-    // references (Buff163, marketplace suggestions) can. No Steam price, no
-    // discount.
-    const reference = ref.steam ?? null;
+    // references (Buff163, marketplace suggestions) can. Without a Steam
+    // price, fall back to the highest price the item is listed at anywhere.
+    const reference = ref.steam ?? highestListed;
     const discount = reference > 0 ? Math.max(0, ((reference - best.price) / reference) * 100) : 0;
 
     const spread =
@@ -722,6 +723,7 @@ function mergeSources(sourceItems, volumes, catalog, references) {
       bestSource: best.source,
       bestUrl: best.url,
       suggestedPrice: reference,
+      discountBasis: ref.steam ? 'steam' : 'listed',
       discount: Math.round(discount * 10) / 10,
       spread: Math.round(spread * 100) / 100,
       crossListed: listings.length > 1,
