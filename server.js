@@ -991,8 +991,14 @@ if (require.main === module) {
     console.log(`CS2 Deal Finder running at http://localhost:${PORT}${MOCK ? ' (mock data mode)' : ''}`);
     if (!CSFLOAT_ENABLED) console.log('CSFloat disabled, set CSFLOAT_API_KEY to enable it as a third source');
     if (!MOCK) {
-      getCatalog(); // start warming the image and rarity maps right away
-      getReferencePrices();
+      // Start warming the image, rarity and reference maps right away. A deals
+      // payload built before they land lacks images, rarities and references
+      // for the whole cache TTL, so rebuild it as soon as they arrive.
+      Promise.allSettled([getCatalog(), getReferencePrices()])
+        .then(() => refreshing) // an in-flight build may predate the maps, let it finish first
+        .catch(() => {})
+        .then(() => cache.payload && refreshCache())
+        .catch((err) => console.error('enrichment refresh failed:', err));
     }
   });
 }
