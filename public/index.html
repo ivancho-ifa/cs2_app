@@ -432,6 +432,8 @@ function render() {
 
 function setStatus(data) {
   const el = document.getElementById('status');
+  // The server names its sources, so new ones need no frontend change
+  for (const [k, s] of Object.entries(data.sources)) if (s.label) SOURCE_LABEL[k] = s.label;
   const enabled = Object.entries(data.sources).filter(([, s]) => s.enabled !== false);
   const up = enabled.filter(([, s]) => s.ok).map(([k]) => SOURCE_LABEL[k] || k);
   const failed = enabled.filter(([, s]) => !s.ok && s.error);

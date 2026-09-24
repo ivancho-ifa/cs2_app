@@ -695,7 +695,15 @@ function shapePayload(base, rarity, type, extra) {
 
 const CSFLOAT_ENABLED = MOCK || Boolean(CSFLOAT_API_KEY);
 const DMARKET_ENABLED = MOCK;
-const MARKETCSGO_ENABLED = !MOCK;
+
+// Every price source, in response order. Disabled sources are reported but
+// never fetched. Mock mode swaps fetchers for fixture readers.
+const SOURCES = {
+  dmarket: { label: 'DMarket', enabled: DMARKET_ENABLED, fetch: () => (MOCK ? fetchDMarketMock() : fetchDMarket()) },
+  skinport: { label: 'Skinport', enabled: true, fetch: () => (MOCK ? fetchSkinportMock() : fetchSkinport()) },
+  csfloat: { label: 'CSFloat', enabled: CSFLOAT_ENABLED, fetch: () => (MOCK ? fetchCSFloatMock() : fetchCSFloat()) },
+  marketcsgo: { label: 'Market.CSGO', enabled: !MOCK, fetch: fetchMarketCsgo },
+};
 
 // Non-blocking peeks: kick the load off and use whatever is available right
 // now. Snapshot loads complete synchronously, live downloads fill in for a
@@ -710,42 +718,31 @@ function peekReferences() {
 }
 
 async function buildPayload() {
-  const tasks = {
-    dmarket: DMARKET_ENABLED ? (MOCK ? fetchDMarketMock() : fetchDMarket()) : Promise.resolve([]),
-    skinport: MOCK ? fetchSkinportMock() : fetchSkinport(),
-    csfloat: CSFLOAT_ENABLED ? (MOCK ? fetchCSFloatMock() : fetchCSFloat()) : Promise.resolve([]),
-    marketcsgo: MARKETCSGO_ENABLED ? fetchMarketCsgo() : Promise.resolve([]),
-  };
-  const [dm, sp, cf, mc, volumes] = await Promise.allSettled([
-    tasks.dmarket,
-    tasks.skinport,
-    tasks.csfloat,
-    tasks.marketcsgo,
+  const keys = Object.keys(SOURCES);
+  const [volumes, ...settled] = await Promise.allSettled([
     getSalesVolumes(),
+    ...keys.map((k) => (SOURCES[k].enabled ? SOURCES[k].fetch() : Promise.resolve([]))),
   ]);
 
-  if (dm.status === 'rejected') console.error('DMarket failed:', dm.reason.message);
-  if (sp.status === 'rejected') console.error('Skinport failed:', sp.reason.message);
-  if (cf.status === 'rejected') console.error('CSFloat failed:', cf.reason.message);
-  if (mc.status === 'rejected') console.error('Market.CSGO failed:', mc.reason.message);
-
-  const sourceItems = {
-    dmarket: dm.status === 'fulfilled' ? dm.value : [],
-    skinport: sp.status === 'fulfilled' ? sp.value : [],
-    csfloat: cf.status === 'fulfilled' ? cf.value : [],
-    marketcsgo: mc.status === 'fulfilled' ? mc.value : [],
-  };
+  const sourceItems = {};
+  const sources = {};
+  keys.forEach((k, i) => {
+    const s = settled[i];
+    const { enabled, label } = SOURCES[k];
+    if (s.status === 'rejected') console.error(`${label} failed:`, s.reason.message);
+    sourceItems[k] = s.status === 'fulfilled' ? s.value : [];
+    sources[k] = {
+      label,
+      enabled,
+      ok: enabled && s.status === 'fulfilled',
+      count: sourceItems[k].length,
+      error: enabled && s.status === 'rejected' ? s.reason.message : null,
+    };
+  });
   const vols = volumes.status === 'fulfilled' ? volumes.value : new Map();
   // Mock stays deterministic for the smoke test, live never blocks on these
   const cat = MOCK ? await getCatalog() : peekCatalog();
   const refs = MOCK ? await getReferencePrices() : peekReferences();
-
-  const sourceStatus = (settled, items, enabled = true) => ({
-    enabled,
-    ok: enabled && settled.status === 'fulfilled',
-    count: items.length,
-    error: enabled && settled.status === 'rejected' ? settled.reason.message : null,
-  });
 
   const merged = mergeSources(sourceItems, vols, cat, refs);
   const rarityCounts = {};
@@ -758,12 +755,7 @@ async function buildPayload() {
   return {
     mock: MOCK,
     fetchedAt: new Date().toISOString(),
-    sources: {
-      dmarket: sourceStatus(dm, sourceItems.dmarket, DMARKET_ENABLED),
-      skinport: sourceStatus(sp, sourceItems.skinport),
-      csfloat: sourceStatus(cf, sourceItems.csfloat, CSFLOAT_ENABLED),
-      marketcsgo: sourceStatus(mc, sourceItems.marketcsgo, MARKETCSGO_ENABLED),
-    },
+    sources,
     referenceCount: refs.size,
     itemCap: MAX_ITEMS,
     rarityCounts,
