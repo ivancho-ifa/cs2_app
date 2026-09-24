@@ -66,8 +66,10 @@ const SKINPORT_HISTORY_URL = 'https://api.skinport.com/v1/sales/history?app_id=7
 const CSFLOAT_PAGES = 3;
 const CSFLOAT_URL = (page, sortBy) =>
   `https://csfloat.com/api/v1/listings?page=${page}&limit=50&sort_by=${sortBy}`;
-// Aggregated cross-market prices (Steam, Buff163 and more), no key needed
-const CSGOTRADER_URL = 'https://prices.csgotrader.app/latest/prices_v6.json';
+// Aggregated cross-market prices, no key needed. CSGOTrader retired the
+// combined prices_v6.json in favor of one file per market.
+const CSGOTRADER_STEAM_URL = 'https://prices.csgotrader.app/latest/steam.json';
+const CSGOTRADER_BUFF_URL = 'https://prices.csgotrader.app/latest/buff163.json';
 
 // market_hash_name to Steam CDN image mapping, so items without a marketplace
 // image still get pictures. Handoff improvement #2.
@@ -358,6 +360,28 @@ function readPrebuilt(file) {
   return null;
 }
 
+// Stitch the per-market files back into the { name: { steam, buff163 } }
+// shape of the old combined dataset. One market failing still yields the other.
+async function fetchCsgoTraderPrices() {
+  const [steam, buff] = await Promise.allSettled([
+    fetchJson(CSGOTRADER_STEAM_URL),
+    fetchJson(CSGOTRADER_BUFF_URL),
+  ]);
+  if (steam.status === 'rejected' && buff.status === 'rejected') {
+    throw new Error(`steam: ${steam.reason.message} || buff163: ${buff.reason.message}`);
+  }
+  if (steam.status === 'rejected') console.error('CSGOTrader steam prices failed:', steam.reason.message);
+  if (buff.status === 'rejected') console.error('CSGOTrader buff163 prices failed:', buff.reason.message);
+  const combined = {};
+  for (const [market, settled] of [['steam', steam], ['buff163', buff]]) {
+    if (settled.status !== 'fulfilled') continue;
+    for (const [name, p] of Object.entries(settled.value)) {
+      (combined[name] ||= {})[market] = p;
+    }
+  }
+  return combined;
+}
+
 async function getReferencePrices() {
   const now = Date.now();
   if (referenceMap.map && now - referenceMap.at < REFERENCE_TTL_MS) return referenceMap.map;
@@ -382,7 +406,7 @@ async function getReferencePrices() {
   const loading = (async () => {
     const map = new Map();
     try {
-      const data = MOCK ? readFixture('csgotrader.json') : await fetchJson(CSGOTRADER_URL);
+      const data = MOCK ? readFixture('csgotrader.json') : await fetchCsgoTraderPrices();
       for (const [name, p] of Object.entries(data)) {
         if (!p || typeof p !== 'object') continue;
         const steamRaw = p.steam || {};
