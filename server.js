@@ -65,6 +65,7 @@ const SKINPORT_ITEMS_URL = 'https://api.skinport.com/v1/items?app_id=730&currenc
 const SKINPORT_HISTORY_URL = 'https://api.skinport.com/v1/sales/history?app_id=730&currency=USD';
 const MARKETCSGO_PRICES_URL = 'https://market.csgo.com/api/v2/prices/USD.json';
 const WAXPEER_PRICES_URL = 'https://api.waxpeer.com/v1/prices?game=csgo&minified=1';
+const WHITEMARKET_PRICES_URL = 'https://api.white.market/export/v1/prices/730.json';
 const CSFLOAT_PAGES = 3;
 const CSFLOAT_URL = (page, sortBy) =>
   `https://csfloat.com/api/v1/listings?page=${page}&limit=50&sort_by=${sortBy}`;
@@ -293,6 +294,30 @@ async function fetchWaxpeer() {
       float: null,
       listingsCount: Number.isFinite(Number(o.count)) ? Number(o.count) : null,
       url: `https://waxpeer.com/?search=${encodeURIComponent(name)}`,
+    });
+  }
+  return items;
+}
+
+// White.market: lowest ask per name as a USD string, with the float of that
+// cheapest listing. The API host redirects to a static export file.
+async function fetchWhiteMarket() {
+  const data = await fetchJson(WHITEMARKET_PRICES_URL);
+  if (!Array.isArray(data)) throw new Error('White.market response is not an array');
+  const items = [];
+  for (const o of data) {
+    const name = o.market_hash_name;
+    const price = Number(o.price);
+    if (!name || !Number.isFinite(price) || price <= 0) continue;
+    const float = o.cheapest_float === null || o.cheapest_float === undefined ? NaN : Number(o.cheapest_float);
+    items.push({
+      name,
+      price,
+      suggested: null,
+      image: null,
+      float: Number.isFinite(float) ? float : null,
+      listingsCount: Number.isFinite(Number(o.market_product_count)) ? Number(o.market_product_count) : null,
+      url: o.market_product_link || `https://white.market/market?search=${encodeURIComponent(name)}`,
     });
   }
   return items;
@@ -727,6 +752,7 @@ const SOURCES = {
   csfloat: { label: 'CSFloat', enabled: CSFLOAT_ENABLED, fetch: () => (MOCK ? fetchCSFloatMock() : fetchCSFloat()) },
   marketcsgo: { label: 'Market.CSGO', enabled: !MOCK, fetch: fetchMarketCsgo },
   waxpeer: { label: 'Waxpeer', enabled: !MOCK, fetch: fetchWaxpeer },
+  whitemarket: { label: 'White.market', enabled: !MOCK, fetch: fetchWhiteMarket },
 };
 
 // Non-blocking peeks: kick the load off and use whatever is available right
