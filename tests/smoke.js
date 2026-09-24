@@ -144,6 +144,26 @@ async function waitForServer() {
   assert(comboData.items.length === 1 && comboData.items[0].name.includes('Death Strike'),
     `souvenir+Covert should return only Death Strike, got ${JSON.stringify(comboData.items.map((i) => i.name))}`);
 
+  // CSV export: uncapped, one price column per enabled source, UTF-8 BOM
+  const resCsv = await fetch(`http://localhost:${PORT}/api/export.csv`);
+  assert(resCsv.ok && resCsv.headers.get('content-type').startsWith('text/csv'), 'export should return text/csv');
+  assert(/attachment; filename="cs2-prices-\d{4}-\d{2}-\d{2}\.csv"/.test(resCsv.headers.get('content-disposition')),
+    `export should be a dated attachment, got ${resCsv.headers.get('content-disposition')}`);
+  const csvText = Buffer.from(await resCsv.arrayBuffer()).toString('utf8');
+  assert(csvText.charCodeAt(0) === 0xfeff, 'export should start with a UTF-8 BOM');
+  const csvLines = csvText.slice(1).trim().split('\r\n');
+  const cols = csvLines[0].split(',');
+  for (const c of ['market_hash_name', 'dmarket_price', 'skinport_price', 'csfloat_price', 'steam_ref', 'cheapest_source', 'spread_pct']) {
+    assert(cols.includes(c), `export header should include ${c}, got ${csvLines[0]}`);
+  }
+  assert(csvLines.length - 1 === data.items.length, `export should have ${data.items.length} rows, got ${csvLines.length - 1}`);
+  const akCells = csvLines.find((l) => l.startsWith('AK-47 | Redline (Field-Tested),')).split(',');
+  const akCol = (c) => akCells[cols.indexOf(c)];
+  assert(akCol('csfloat_price') === '51.75' && akCol('dmarket_price') === '52.5' && akCol('skinport_price') === '54.9',
+    `AK-47 export prices wrong: ${akCells.join(',')}`);
+  assert(akCol('steam_ref') === '55.2' && akCol('cheapest_source') === 'csfloat' && akCol('spread_pct') === '6.1',
+    `AK-47 export refs/cheapest wrong: ${akCells.join(',')}`);
+
   // Item cap: with MAX_ITEMS=5 the list is capped but every cross-listed
   // item survives the cut
   const CAP_PORT = PORT + 1;
