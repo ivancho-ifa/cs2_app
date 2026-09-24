@@ -63,6 +63,7 @@ const DMARKET_ENDPOINTS = [
 ];
 const SKINPORT_ITEMS_URL = 'https://api.skinport.com/v1/items?app_id=730&currency=USD';
 const SKINPORT_HISTORY_URL = 'https://api.skinport.com/v1/sales/history?app_id=730&currency=USD';
+const MARKETCSGO_PRICES_URL = 'https://market.csgo.com/api/v2/prices/USD.json';
 const CSFLOAT_PAGES = 3;
 const CSFLOAT_URL = (page, sortBy) =>
   `https://csfloat.com/api/v1/listings?page=${page}&limit=50&sort_by=${sortBy}`;
@@ -246,6 +247,27 @@ async function fetchSkinport() {
         o.item_page ||
         o.market_page ||
         `https://skinport.com/market?search=${encodeURIComponent(name)}`,
+    });
+  }
+  return items;
+}
+
+async function fetchMarketCsgo() {
+  const data = await fetchJson(MARKETCSGO_PRICES_URL);
+  if (!data.success || !Array.isArray(data.items)) throw new Error('Market.CSGO response has no items');
+  const items = [];
+  for (const o of data.items) {
+    const name = o.market_hash_name;
+    const price = Number(o.price);
+    if (!name || !Number.isFinite(price) || price <= 0) continue;
+    items.push({
+      name,
+      price,
+      suggested: null,
+      image: null,
+      float: null,
+      listingsCount: null,
+      url: `https://market.csgo.com/en/?search=${encodeURIComponent(name)}`,
     });
   }
   return items;
@@ -649,6 +671,7 @@ function shapePayload(base, rarity, type, extra) {
 
 const CSFLOAT_ENABLED = MOCK || Boolean(CSFLOAT_API_KEY);
 const DMARKET_ENABLED = MOCK;
+const MARKETCSGO_ENABLED = !MOCK;
 
 // Non-blocking peeks: kick the load off and use whatever is available right
 // now. Snapshot loads complete synchronously, live downloads fill in for a
@@ -667,22 +690,26 @@ async function buildPayload() {
     dmarket: DMARKET_ENABLED ? (MOCK ? fetchDMarketMock() : fetchDMarket()) : Promise.resolve([]),
     skinport: MOCK ? fetchSkinportMock() : fetchSkinport(),
     csfloat: CSFLOAT_ENABLED ? (MOCK ? fetchCSFloatMock() : fetchCSFloat()) : Promise.resolve([]),
+    marketcsgo: MARKETCSGO_ENABLED ? fetchMarketCsgo() : Promise.resolve([]),
   };
-  const [dm, sp, cf, volumes] = await Promise.allSettled([
+  const [dm, sp, cf, mc, volumes] = await Promise.allSettled([
     tasks.dmarket,
     tasks.skinport,
     tasks.csfloat,
+    tasks.marketcsgo,
     getSalesVolumes(),
   ]);
 
   if (dm.status === 'rejected') console.error('DMarket failed:', dm.reason.message);
   if (sp.status === 'rejected') console.error('Skinport failed:', sp.reason.message);
   if (cf.status === 'rejected') console.error('CSFloat failed:', cf.reason.message);
+  if (mc.status === 'rejected') console.error('Market.CSGO failed:', mc.reason.message);
 
   const sourceItems = {
     dmarket: dm.status === 'fulfilled' ? dm.value : [],
     skinport: sp.status === 'fulfilled' ? sp.value : [],
     csfloat: cf.status === 'fulfilled' ? cf.value : [],
+    marketcsgo: mc.status === 'fulfilled' ? mc.value : [],
   };
   const vols = volumes.status === 'fulfilled' ? volumes.value : new Map();
   // Mock stays deterministic for the smoke test, live never blocks on these
@@ -711,6 +738,7 @@ async function buildPayload() {
       dmarket: sourceStatus(dm, sourceItems.dmarket, DMARKET_ENABLED),
       skinport: sourceStatus(sp, sourceItems.skinport),
       csfloat: sourceStatus(cf, sourceItems.csfloat, CSFLOAT_ENABLED),
+      marketcsgo: sourceStatus(mc, sourceItems.marketcsgo, MARKETCSGO_ENABLED),
     },
     referenceCount: refs.size,
     itemCap: MAX_ITEMS,
