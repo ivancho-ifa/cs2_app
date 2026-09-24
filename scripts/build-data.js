@@ -18,6 +18,14 @@ const IMAGE_DATASETS = [
   'https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api/en/stickers.json',
   'https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api/en/crates.json',
   'https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api/en/agents.json',
+  'https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api/en/sticker_slabs.json',
+  'https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api/en/graffiti.json',
+  'https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api/en/highlights.json',
+  'https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api/en/music_kits.json',
+  'https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api/en/patches.json',
+  'https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api/en/keychains.json',
+  'https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api/en/collectibles.json',
+  'https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api/en/keys.json',
 ];
 const CSGOTRADER_URL = 'https://prices.csgotrader.app/latest/prices_v6.json';
 
