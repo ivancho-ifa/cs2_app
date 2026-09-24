@@ -891,10 +891,13 @@ function refreshCache() {
 }
 
 app.get('/api/deals', async (req, res) => {
-  // On Vercel the CDN honors s-maxage, giving the 5 minute cache across
-  // stateless invocations (keyed per query string, so each rarity filter
-  // caches separately). Harmless for local single-process serving.
-  res.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
+  // On Vercel the CDN caches for 5 minutes across stateless invocations
+  // (keyed per query string, so each rarity filter caches separately). The
+  // directives go in Vercel-CDN-Cache-Control, which only Vercel reads:
+  // browsers also honor stale-while-revalidate, and served directly they kept
+  // showing a previous payload for up to 10 minutes after a restart.
+  res.set('Vercel-CDN-Cache-Control', 's-maxage=300, stale-while-revalidate=600');
+  res.set('Cache-Control', 'no-cache');
   const rarity =
     typeof req.query.rarity === 'string' && req.query.rarity.length <= 40 ? req.query.rarity : '';
   const TYPES = ['souvenir', 'stattrak', 'special', 'normal'];
