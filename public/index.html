@@ -51,6 +51,7 @@
   #status.live { color: #6ee26e; }
   #status.partial { color: var(--gold); }
   #status.down { color: var(--covert); }
+  #status .age { opacity: 0.55; font-variant-numeric: tabular-nums; }
   .controls {
     display: flex;
     flex-wrap: wrap;
@@ -456,8 +457,8 @@ function renderStatus() {
   const enabled = Object.entries(data.sources).filter(([, s]) => s.enabled !== false);
   // "~" marks stores that do not date their data: age since the app fetched it
   const withAge = ([k, s]) => (s.asOf
-    ? `${SOURCE_LABEL[k] || k} ${s.asOfBasis === 'fetched' ? '~' : ''}${fmtAge(Date.now() - Date.parse(s.asOf))}`
-    : SOURCE_LABEL[k] || k);
+    ? `${esc(SOURCE_LABEL[k] || k)} <span class="age">(${s.asOfBasis === 'fetched' ? '~' : ''}${fmtAge(Date.now() - Date.parse(s.asOf))})</span>`
+    : esc(SOURCE_LABEL[k] || k));
   const up = enabled.filter(([, s]) => s.ok).map(withAge);
   const failed = enabled.filter(([, s]) => !s.ok && s.error);
   el.title = [
@@ -468,11 +469,12 @@ function renderStatus() {
     ? `top ${data.items.length} of ${data.totalBeforeCap}`
     : data.items.length;
   const tag = data.mock ? 'MOCK DATA' : 'LIVE';
+  // Labels and ages are escaped above, so the line can carry the age markup
   if (up.length === enabled.length && up.length > 0) {
-    el.textContent = `${tag} - ${up.join(' + ')} | ${n} items`;
+    el.innerHTML = `${tag} - ${up.join(' + ')} | ${n} items`;
     el.className = data.mock ? 'partial' : 'live';
   } else if (up.length > 0) {
-    el.textContent = `${tag} - ${up.join(' + ')} only | ${n} items`;
+    el.innerHTML = `${tag} - ${up.join(' + ')} only | ${n} items`;
     el.className = 'partial';
   } else {
     el.textContent = 'OFFLINE - all sources failed, retrying in 60s';
