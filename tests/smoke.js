@@ -59,7 +59,7 @@ async function waitForServer() {
   assert(ak.crossListed === true && ak.listings.length === 3, 'AK-47 Redline should be listed on all three sources');
   assert(ak.bestSource === 'csfloat' && ak.bestPrice === 51.75, `AK-47 best should be csfloat at 51.75, got ${ak.bestSource} at ${ak.bestPrice}`);
   assert(Math.abs(ak.spread - 3.15) < 0.001, `AK-47 spread should be 3.15, got ${ak.spread}`);
-  assert(Math.abs(ak.discount - 32.4) < 0.1, `AK-47 discount should be ~32.4 (vs csfloat predicted 76.50), got ${ak.discount}`);
+  assert(Math.abs(ak.discount - 6.3) < 0.1, `AK-47 discount should be ~6.3 (51.75 vs Steam 55.20), got ${ak.discount}`);
   assert(ak.image, 'AK-47 should carry an image');
 
   // Reference rows come from the csgotrader fixture with listing links
@@ -68,11 +68,10 @@ async function waitForServer() {
   assert(steamRef && steamRef.price === 55.2 && steamRef.url.includes('steamcommunity.com/market/listings/730/'),
     `AK-47 Steam ref wrong: ${JSON.stringify(steamRef)}`);
 
-  // No-suggested-price fallback: USP-S Kill Confirmed has no marketplace
-  // suggested price, so the Buff163 reference (68.00) drives the discount
+  // Discount is always against Steam, never Buff163 (68.00) or a suggestion
   const usp = data.items.find((i) => i.name === 'USP-S | Kill Confirmed (Field-Tested)');
   assert(usp, 'USP-S should be present');
-  assert(Math.abs(usp.discount - 10.3) < 0.1, `USP-S discount should be ~10.3 vs Buff163 68, got ${usp.discount}`);
+  assert(Math.abs(usp.discount - 8.3) < 0.1, `USP-S discount should be ~8.3 vs Steam 66.50, got ${usp.discount}`);
 
   // Rarity comes from the catalog fixture
   assert(ak.rarity === 'Classified' && ak.rarityColor === '#d32ce6',
@@ -126,15 +125,15 @@ async function waitForServer() {
     `rarityCounts.Covert should be 8 from the full list, got ${JSON.stringify(rarityData.rarityCounts)}`);
 
   // Server-side type filter: souvenirs only, with the underlisted one
-  // (no suggested price) discounted against its Buff163 reference
+  // discounted against its Steam reference
   const resSouvenir = await fetch(`http://localhost:${PORT}/api/deals?type=souvenir`);
   const souvenirData = await resSouvenir.json();
   assert(souvenirData.items.length === 2 && souvenirData.items.every((i) => i.type === 'souvenir'),
     `type=souvenir should return exactly 2 souvenir items, got ${souvenirData.items.length}`);
   const safari = souvenirData.items.find((i) => i.name === 'Souvenir AWP | Safari Mesh (Field-Tested)');
   assert(safari, 'Souvenir Safari Mesh should be present');
-  assert(Math.abs(safari.discount - 60) < 0.1,
-    `Safari Mesh discount should be 60 (4.20 vs Buff163 10.50), got ${safari.discount}`);
+  assert(Math.abs(safari.discount - 57.1) < 0.1,
+    `Safari Mesh discount should be 57.1 (4.20 vs Steam 9.80), got ${safari.discount}`);
   assert(souvenirData.typeCounts && souvenirData.typeCounts.souvenir === 2,
     `typeCounts.souvenir should be 2, got ${JSON.stringify(souvenirData.typeCounts)}`);
 
