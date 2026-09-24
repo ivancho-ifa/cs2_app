@@ -19,12 +19,36 @@ const IMAGE_DATASETS = [
   'https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api/en/crates.json',
   'https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api/en/agents.json',
 ];
-const CSGOTRADER_URL = 'https://prices.csgotrader.app/latest/prices_v6.json';
+// CSGOTrader retired the combined prices_v6.json in favor of one file per market
+const CSGOTRADER_STEAM_URL = 'https://prices.csgotrader.app/latest/steam.json';
+const CSGOTRADER_BUFF_URL = 'https://prices.csgotrader.app/latest/buff163.json';
 
 async function fetchJson(url) {
   const res = await fetch(url, { headers: { 'User-Agent': 'cs2-deal-finder-build/1.0' } });
   if (!res.ok) throw new Error(`HTTP ${res.status} from ${new URL(url).host}`);
   return res.json();
+}
+
+// Stitch the per-market files back into the { name: { steam, buff163 } }
+// shape of the old combined dataset. One market failing still yields the other.
+async function fetchCsgoTraderPrices() {
+  const [steam, buff] = await Promise.allSettled([
+    fetchJson(CSGOTRADER_STEAM_URL),
+    fetchJson(CSGOTRADER_BUFF_URL),
+  ]);
+  if (steam.status === 'rejected' && buff.status === 'rejected') {
+    throw new Error(`steam: ${steam.reason.message} || buff163: ${buff.reason.message}`);
+  }
+  if (steam.status === 'rejected') console.error(`  csgotrader steam FAILED: ${steam.reason.message}`);
+  if (buff.status === 'rejected') console.error(`  csgotrader buff163 FAILED: ${buff.reason.message}`);
+  const combined = {};
+  for (const [market, settled] of [['steam', steam], ['buff163', buff]]) {
+    if (settled.status !== 'fulfilled') continue;
+    for (const [name, p] of Object.entries(settled.value)) {
+      (combined[name] ||= {})[market] = p;
+    }
+  }
+  return combined;
 }
 
 // The weapon tiers carry a redundant Grade suffix, sticker and agent tiers
@@ -68,7 +92,7 @@ async function buildCatalogMaps() {
 
 async function buildReferencePrices() {
   try {
-    const data = await fetchJson(CSGOTRADER_URL);
+    const data = await fetchCsgoTraderPrices();
     const map = {};
     for (const [name, p] of Object.entries(data)) {
       if (!p || typeof p !== 'object') continue;
