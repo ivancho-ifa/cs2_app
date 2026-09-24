@@ -64,6 +64,7 @@ const DMARKET_ENDPOINTS = [
 const SKINPORT_ITEMS_URL = 'https://api.skinport.com/v1/items?app_id=730&currency=USD';
 const SKINPORT_HISTORY_URL = 'https://api.skinport.com/v1/sales/history?app_id=730&currency=USD';
 const MARKETCSGO_PRICES_URL = 'https://market.csgo.com/api/v2/prices/USD.json';
+const WAXPEER_PRICES_URL = 'https://api.waxpeer.com/v1/prices?game=csgo&minified=1';
 const CSFLOAT_PAGES = 3;
 const CSFLOAT_URL = (page, sortBy) =>
   `https://csfloat.com/api/v1/listings?page=${page}&limit=50&sort_by=${sortBy}`;
@@ -270,6 +271,28 @@ async function fetchMarketCsgo() {
       float: null,
       listingsCount: null,
       url: `https://market.csgo.com/en/?search=${encodeURIComponent(name)}`,
+    });
+  }
+  return items;
+}
+
+// Waxpeer: lowest ask per name, min is in thousandths of a USD
+async function fetchWaxpeer() {
+  const data = await fetchJson(WAXPEER_PRICES_URL);
+  if (!data.success || !Array.isArray(data.items)) throw new Error('Waxpeer response has no items');
+  const items = [];
+  for (const o of data.items) {
+    const name = o.name;
+    const price = Number(o.min) / 1000;
+    if (!name || !Number.isFinite(price) || price <= 0) continue;
+    items.push({
+      name,
+      price,
+      suggested: null,
+      image: null,
+      float: null,
+      listingsCount: Number.isFinite(Number(o.count)) ? Number(o.count) : null,
+      url: `https://waxpeer.com/?search=${encodeURIComponent(name)}`,
     });
   }
   return items;
@@ -703,6 +726,7 @@ const SOURCES = {
   skinport: { label: 'Skinport', enabled: true, fetch: () => (MOCK ? fetchSkinportMock() : fetchSkinport()) },
   csfloat: { label: 'CSFloat', enabled: CSFLOAT_ENABLED, fetch: () => (MOCK ? fetchCSFloatMock() : fetchCSFloat()) },
   marketcsgo: { label: 'Market.CSGO', enabled: !MOCK, fetch: fetchMarketCsgo },
+  waxpeer: { label: 'Waxpeer', enabled: !MOCK, fetch: fetchWaxpeer },
 };
 
 // Non-blocking peeks: kick the load off and use whatever is available right
