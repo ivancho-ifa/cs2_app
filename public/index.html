@@ -84,7 +84,7 @@
     user-select: none;
   }
   .controls input:focus, .controls select:focus { outline: 1px solid var(--gold); }
-  #dir {
+  #dir, #export {
     background: var(--panel-2);
     border: 1px solid var(--edge);
     color: var(--text);
@@ -95,7 +95,8 @@
     border-radius: 3px;
     cursor: pointer;
   }
-  #dir:hover { border-color: var(--gold); color: var(--gold); }
+  #export { text-decoration: none; }
+  #dir:hover, #export:hover { border-color: var(--gold); color: var(--gold); }
   #grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
@@ -284,6 +285,7 @@
     <option value="rarity">Sort: Rarity</option>
   </select>
   <button id="dir" title="Flip sort direction" aria-label="Flip sort direction">&#8595; DESC</button>
+  <a id="export" href="/api/export.csv" download title="Download every merged item with per-market prices">EXPORT CSV</a>
 </div>
 
 <div id="grid"></div>

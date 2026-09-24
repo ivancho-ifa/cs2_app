@@ -791,6 +791,78 @@ app.get('/api/deals', async (req, res) => {
   }
 });
 
+// Quote a CSV field when needed. Text starting with = + - @ is prefixed with
+// an apostrophe so spreadsheets never evaluate marketplace data as a formula.
+function csvField(v) {
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'number') return String(v);
+  let s = String(v);
+  if (/^[=+\-@]/.test(s)) s = `'${s}`;
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function toCsv(payload) {
+  const sources = Object.keys(payload.sources).filter((k) => payload.sources[k].enabled);
+  const header = [
+    'market_hash_name',
+    'type',
+    'rarity',
+    ...sources.map((s) => `${s}_price`),
+    'steam_ref',
+    'buff163_ref',
+    'cheapest_source',
+    'cheapest_price',
+    'spread',
+    'spread_pct',
+    'discount_pct',
+    'cross_listed',
+    'cheapest_url',
+  ];
+  const lines = [header.join(',')];
+  for (const it of payload.items) {
+    const price = Object.fromEntries(it.listings.map((l) => [l.source, l.price]));
+    const ref = Object.fromEntries(it.refs.map((r) => [r.label, r.price]));
+    const spreadPct = it.crossListed ? Math.round((it.spread / it.bestPrice) * 1000) / 10 : null;
+    const row = [
+      it.name,
+      it.type,
+      it.rarity,
+      ...sources.map((s) => price[s]),
+      ref.Steam,
+      ref.Buff163,
+      it.bestSource,
+      it.bestPrice,
+      it.crossListed ? it.spread : null,
+      spreadPct,
+      it.discount,
+      it.crossListed,
+      it.bestUrl,
+    ];
+    lines.push(row.map(csvField).join(','));
+  }
+  // BOM so Excel reads the file as UTF-8 and keeps the ★ and ™ in item names
+  return '﻿' + lines.join('\r\n') + '\r\n';
+}
+
+// Full merged list as CSV, uncapped, from the same cache as /api/deals
+app.get('/api/export.csv', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  let payload = cache.payload;
+  try {
+    if (!payload) payload = await refreshCache();
+    else if (Date.now() - cache.at >= CACHE_TTL_MS) {
+      refreshCache().catch((err) => console.error('background refresh failed:', err));
+    }
+  } catch (err) {
+    console.error('export build failed:', err);
+    return res.status(502).type('text/plain').send('All marketplace sources are unavailable right now');
+  }
+  const date = payload.fetchedAt.slice(0, 10);
+  res.set('Content-Type', 'text/csv; charset=utf-8');
+  res.set('Content-Disposition', `attachment; filename="cs2-prices-${date}.csv"`);
+  res.send(toCsv(payload));
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Local: run the server directly. Vercel: api/index.js imports the app and
