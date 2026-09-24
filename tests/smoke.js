@@ -38,6 +38,15 @@ async function waitForServer() {
   assert(data.mock === true, 'expected mock mode');
   assert(data.sources.dmarket.ok && data.sources.skinport.ok && data.sources.csfloat.ok,
     'all three sources should be ok in mock mode');
+  // Every working source is dated. Fixtures carry no store timestamp, so
+  // they are dated by fetch time, which must be recent.
+  for (const [k, s] of Object.entries(data.sources).filter(([, s]) => s.ok)) {
+    assert(s.asOfBasis === 'fetched' && Date.now() - Date.parse(s.asOf) < 60000,
+      `${k} should be dated by a recent fetch, got ${s.asOfBasis} ${s.asOf}`);
+  }
+  for (const [k, s] of Object.entries(data.sources).filter(([, s]) => !s.enabled)) {
+    assert(s.asOf === null, `disabled ${k} should have no date, got ${s.asOf}`);
+  }
   assert(Array.isArray(data.items) && data.items.length > 0, 'items should be a non-empty array');
 
   for (const it of data.items) {

@@ -430,14 +430,40 @@ function render() {
   }).join('');
 }
 
+// Age of a store's data as "42s", "3m 05s" or "1h 02m"
+function fmtAge(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const pad = (v) => String(v).padStart(2, '0');
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ${pad(s % 60)}s`;
+  return `${Math.floor(s / 3600)}h ${pad(Math.floor(s / 60) % 60)}m`;
+}
+
+// Re-rendered every second so each store's data age keeps ticking
+let statusData = null;
+setInterval(() => { if (statusData) renderStatus(); }, 1000);
+
 function setStatus(data) {
-  const el = document.getElementById('status');
   // The server names its sources, so new ones need no frontend change
   for (const [k, s] of Object.entries(data.sources)) if (s.label) SOURCE_LABEL[k] = s.label;
+  statusData = data;
+  renderStatus();
+}
+
+function renderStatus() {
+  const data = statusData;
+  const el = document.getElementById('status');
   const enabled = Object.entries(data.sources).filter(([, s]) => s.enabled !== false);
-  const up = enabled.filter(([, s]) => s.ok).map(([k]) => SOURCE_LABEL[k] || k);
+  // "~" marks stores that do not date their data: age since the app fetched it
+  const withAge = ([k, s]) => (s.asOf
+    ? `${SOURCE_LABEL[k] || k} ${s.asOfBasis === 'fetched' ? '~' : ''}${fmtAge(Date.now() - Date.parse(s.asOf))}`
+    : SOURCE_LABEL[k] || k);
+  const up = enabled.filter(([, s]) => s.ok).map(withAge);
   const failed = enabled.filter(([, s]) => !s.ok && s.error);
-  el.title = failed.map(([k, s]) => `${SOURCE_LABEL[k] || k}: ${s.error}`).join('\n');
+  el.title = [
+    'Time since each store last updated its prices. ~ means the store gives no timestamp, so it is the time since the app fetched it.',
+    ...failed.map(([k, s]) => `${SOURCE_LABEL[k] || k}: ${s.error}`),
+  ].join('\n');
   const n = data.totalBeforeCap > data.items.length
     ? `top ${data.items.length} of ${data.totalBeforeCap}`
     : data.items.length;
@@ -490,6 +516,7 @@ async function load() {
     const anyUp = Object.values(data.sources).some(s => s.enabled !== false && s.ok);
     if (!anyUp) retrySoon(60000);
   } catch (e) {
+    statusData = null; // stop the age ticker from overwriting this message
     el.textContent = 'OFFLINE - server unreachable, retrying in 60s';
     el.className = 'down';
     retrySoon(60000);

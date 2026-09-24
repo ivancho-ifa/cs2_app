@@ -101,7 +101,8 @@ const BUFF_SEARCH = (name) =>
 // Fetch helpers
 // ---------------------------------------------------------------------------
 
-async function fetchJson(url, headers = {}, timeoutMs = FETCH_TIMEOUT_MS) {
+// Pass a meta object to receive response details, e.g. meta.lastModified
+async function fetchJson(url, headers = {}, timeoutMs = FETCH_TIMEOUT_MS, meta = null) {
   let res;
   try {
     res = await fetch(url, {
@@ -120,6 +121,7 @@ async function fetchJson(url, headers = {}, timeoutMs = FETCH_TIMEOUT_MS) {
     const snippet = buf.toString('utf8').slice(0, 300).replace(/\s+/g, ' ');
     throw new Error(`HTTP ${res.status} from ${new URL(url).host}${snippet ? ` | body: ${snippet}` : ''}`);
   }
+  if (meta) meta.lastModified = res.headers.get('last-modified');
   // Node's fetch auto-decompresses encodings it knows. Older Node 18 builds do
   // not decode Brotli, so if plain parsing fails try a manual Brotli pass.
   try {
@@ -244,7 +246,10 @@ async function fetchSkinport() {
   const data = await fetchJson(SKINPORT_ITEMS_URL, { 'Accept-Encoding': 'br' });
   if (!Array.isArray(data)) throw new Error('Skinport response is not an array');
   const items = [];
+  // The newest per-item updated_at (unix seconds) dates the whole snapshot
+  let newest = 0;
   for (const o of data) {
+    if (Number(o.updated_at) > newest) newest = Number(o.updated_at);
     const name = o.market_hash_name;
     const price = Number(o.min_price);
     if (!name || !Number.isFinite(price) || price <= 0) continue;
@@ -262,7 +267,7 @@ async function fetchSkinport() {
         `https://skinport.com/market?search=${encodeURIComponent(name)}`,
     });
   }
-  return items;
+  return { items, asOf: newest ? newest * 1000 : null };
 }
 
 async function fetchMarketCsgo() {
@@ -283,7 +288,8 @@ async function fetchMarketCsgo() {
       url: `https://market.csgo.com/en/?search=${encodeURIComponent(name)}`,
     });
   }
-  return items;
+  // time is the unix second the price list was generated
+  return { items, asOf: Number(data.time) > 0 ? Number(data.time) * 1000 : null };
 }
 
 // Waxpeer: lowest ask per name, min is in thousandths of a USD
@@ -311,7 +317,8 @@ async function fetchWaxpeer() {
 // White.market: lowest ask per name as a USD string, with the float of that
 // cheapest listing. The API host redirects to a static export file.
 async function fetchWhiteMarket() {
-  const data = await fetchJson(WHITEMARKET_PRICES_URL);
+  const meta = {};
+  const data = await fetchJson(WHITEMARKET_PRICES_URL, {}, FETCH_TIMEOUT_MS, meta);
   if (!Array.isArray(data)) throw new Error('White.market response is not an array');
   const items = [];
   for (const o of data) {
@@ -329,7 +336,9 @@ async function fetchWhiteMarket() {
       url: o.market_product_link || `https://white.market/market?search=${encodeURIComponent(name)}`,
     });
   }
-  return items;
+  // The export file is regenerated every few minutes, its Last-Modified dates it
+  const written = Date.parse(meta.lastModified || '');
+  return { items, asOf: Number.isFinite(written) ? written : null };
 }
 
 // Lis-Skins: lowest ask per name in USD with a direct item page link
@@ -801,9 +810,18 @@ function peekReferences() {
 
 async function buildPayload() {
   const keys = Object.keys(SOURCES);
+  // A fetcher returns its items, or { items, asOf } when the marketplace
+  // dates its own data. Otherwise the data is dated by when it arrived.
+  const run = async (k) => {
+    const value = await SOURCES[k].fetch();
+    const fetchedAt = Date.now();
+    return Array.isArray(value)
+      ? { items: value, asOf: fetchedAt, asOfBasis: 'fetched' }
+      : { items: value.items, asOf: value.asOf ?? fetchedAt, asOfBasis: value.asOf ? 'store' : 'fetched' };
+  };
   const [volumes, ...settled] = await Promise.allSettled([
     getSalesVolumes(),
-    ...keys.map((k) => (SOURCES[k].enabled ? SOURCES[k].fetch() : Promise.resolve([]))),
+    ...keys.map((k) => (SOURCES[k].enabled ? run(k) : Promise.resolve({ items: [], asOf: null, asOfBasis: null }))),
   ]);
 
   const sourceItems = {};
@@ -812,13 +830,16 @@ async function buildPayload() {
     const s = settled[i];
     const { enabled, label } = SOURCES[k];
     if (s.status === 'rejected') console.error(`${label} failed:`, s.reason.message);
-    sourceItems[k] = s.status === 'fulfilled' ? s.value : [];
+    const ok = enabled && s.status === 'fulfilled';
+    sourceItems[k] = s.status === 'fulfilled' ? s.value.items : [];
     sources[k] = {
       label,
       enabled,
-      ok: enabled && s.status === 'fulfilled',
+      ok,
       count: sourceItems[k].length,
       error: enabled && s.status === 'rejected' ? s.reason.message : null,
+      asOf: ok ? new Date(s.value.asOf).toISOString() : null,
+      asOfBasis: ok ? s.value.asOfBasis : null,
     };
   });
   const vols = volumes.status === 'fulfilled' ? volumes.value : new Map();
