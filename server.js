@@ -648,6 +648,7 @@ function shapePayload(base, rarity, type, extra) {
 // ---------------------------------------------------------------------------
 
 const CSFLOAT_ENABLED = MOCK || Boolean(CSFLOAT_API_KEY);
+const DMARKET_ENABLED = MOCK;
 
 // Non-blocking peeks: kick the load off and use whatever is available right
 // now. Snapshot loads complete synchronously, live downloads fill in for a
@@ -663,7 +664,7 @@ function peekReferences() {
 
 async function buildPayload() {
   const tasks = {
-    dmarket: MOCK ? fetchDMarketMock() : fetchDMarket(),
+    dmarket: DMARKET_ENABLED ? (MOCK ? fetchDMarketMock() : fetchDMarket()) : Promise.resolve([]),
     skinport: MOCK ? fetchSkinportMock() : fetchSkinport(),
     csfloat: CSFLOAT_ENABLED ? (MOCK ? fetchCSFloatMock() : fetchCSFloat()) : Promise.resolve([]),
   };
@@ -707,7 +708,7 @@ async function buildPayload() {
     mock: MOCK,
     fetchedAt: new Date().toISOString(),
     sources: {
-      dmarket: sourceStatus(dm, sourceItems.dmarket),
+      dmarket: sourceStatus(dm, sourceItems.dmarket, DMARKET_ENABLED),
       skinport: sourceStatus(sp, sourceItems.skinport),
       csfloat: sourceStatus(cf, sourceItems.csfloat, CSFLOAT_ENABLED),
     },
